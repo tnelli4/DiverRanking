@@ -41,9 +41,13 @@ class MeetSpiderSpider(scrapy.Spider):
         },
     }
     
-    def parse(self, response):
+    def parse(self, response, meet_count=0):
         rows = response.xpath('//tr[@bgcolor]')
+        
         for row in rows:
+            if meet_count >= 4:
+                return
+
             tds = row.xpath('./td')
             if len(tds) < 5:
                 continue
@@ -54,6 +58,7 @@ class MeetSpiderSpider(scrapy.Spider):
             location = tds[4].xpath('string(.)').get(default='').strip()
 
             if results_link:
+                meet_count += 1
                 yield response.follow(
                     results_link,
                     callback=self.parse_meet,
@@ -64,9 +69,14 @@ class MeetSpiderSpider(scrapy.Spider):
                     }
                 )
 
-        next_page = response.xpath('//a[contains(text(), "Next 200 Meets")]/@href').get()
-        if next_page:
-            yield response.follow(next_page, callback=self.parse)
+        if meet_count < 4:
+            next_page = response.xpath('//a[contains(text(), "Next 200 Meets")]/@href').get()
+            if next_page:
+                yield response.follow(
+                    next_page,
+                    callback=self.parse,
+                    cb_kwargs={"meet_count": meet_count}
+                )
 
     def parse_meet(self, response):
         meet_name = response.meta.get("meet_name")
@@ -100,4 +110,37 @@ class MeetSpiderSpider(scrapy.Spider):
                 )
 
     def parse_event(self, response):
-        pass
+        meet_name = response.meta.get("meet_name")
+        start_date = response.meta.get("start_date")
+        location = response.meta.get("location")
+        event_name = response.meta.get("event_name")
+
+        rows = response.xpath('//tr[td[@valign="top"]]')
+        for row in rows:
+            tds = row.xpath('./td')
+            if len(tds) < 4:
+                continue
+
+            diver_link = tds[0].xpath('.//a/@href').get()
+            diver_name = tds[0].xpath('.//a/text()').get()
+            team = tds[1].xpath('string(.)').get(default='').strip()
+            place = tds[2].xpath('string(.)').get(default='').strip()
+            score = tds[3].xpath('.//a/text()').get()
+
+            # extract diver_id from profile.php?number=171039
+            diver_id = None
+            if diver_link and 'number=' in diver_link:
+                diver_id = diver_link.split('number=')[1].split('&')[0]
+
+            if diver_name and place:
+                yield {
+                    "meet_name": meet_name,
+                    "start_date": start_date,
+                    "location": location,
+                    "event_name": event_name,
+                    "diver_id": diver_id,
+                    "diver_name": diver_name,
+                    "team": team,
+                    "place": place,
+                    "score": score,
+                }
