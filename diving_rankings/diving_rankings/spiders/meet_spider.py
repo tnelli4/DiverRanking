@@ -13,7 +13,9 @@ class MeetSpiderSpider(scrapy.Spider):
         "ROBOTSTXT_OBEY": False,
         #let 403 errors go into parse instead of ignored
         "HTTPERROR_ALLOWED_CODES": [403],
-        
+        "DEPTH_PRIORITY": 1,
+        "SCHEDULER_DISK_QUEUE": "scrapy.squeues.PickleFifoDiskQueue",
+        "SCHEDULER_MEMORY_QUEUE": "scrapy.squeues.FifoMemoryQueue",
         #limits download speeds to be nice
         "DOWNLOAD_DELAY": 2.0,
         "RANDOMIZE_DOWNLOAD_DELAY": True,
@@ -71,7 +73,7 @@ class MeetSpiderSpider(scrapy.Spider):
         start_date = response.meta.get("start_date")
         location = response.meta.get("location")
 
-        rows = response.xpath('//tr[@bgcolor="DDDDDD"]')
+        rows = response.xpath('//tr[.//a[contains(@href, "eventresultsext.php")]]')
         for row in rows:
             tds = row.xpath('./td')
             if len(tds) < 1:
@@ -83,8 +85,9 @@ class MeetSpiderSpider(scrapy.Spider):
             event_round = tds[0].xpath('.//a/following-sibling::text()').get(default='').strip()
             full_event_name = f"{event_name} {event_round}".strip() if event_name else None
             
-            if event_link:
-                self.logger.info(f"OPENING EVENT: {event_name} - {event_link}")
+
+            if event_link and 'eventnum=all' not in event_link:
+                self.logger.info(f"OPENING EVENT: {full_event_name} - {event_link}")
                 yield response.follow(
                     event_link,
                     callback=self.parse_event,
